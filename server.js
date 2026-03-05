@@ -1,13 +1,33 @@
+const http = require('http');
 const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const wss = new WebSocket.Server({ port: PORT }, () => {
-    console.log(`🥷 NINJA MAESTRO Server is running on port ${PORT}`);
+
+// 1. إنشاء خادم HTTP لتقديم واجهة المستخدم (Dashboard)
+const server = http.createServer((req, res) => {
+    if (req.url === '/') {
+        fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+            if (err) {
+                res.writeHead(500);
+                res.end('Error loading dashboard');
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(data);
+            }
+        });
+    } else {
+        res.writeHead(404);
+        res.end();
+    }
 });
 
-// سجل الأجهزة المتصلة
+// 2. دمج خادم WebSocket مع خادم HTTP
+const wss = new WebSocket.Server({ server });
+
 const connectedDevices = new Map();
-let deviceCounter = 0; // عداد لإعطاء أسماء بالترتيب
+let deviceCounter = 0; 
 
 wss.on('connection', (ws) => {
     console.log('🟡 New connection attempt...');
@@ -15,10 +35,10 @@ wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         const data = JSON.parse(message);
 
-        // 1. تسجيل بصمة الجهاز فور اتصاله
         if (data.type === 'register') {
             deviceCounter++;
-            const deviceName = `Ninja-${deviceCounter}`;
+            // تمييز الواجهة عن باقي الأجهزة
+            const deviceName = data.fingerprint === 'NINJA-DASHBOARD' ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
             
             connectedDevices.set(ws, {
                 id: deviceCounter,
@@ -29,14 +49,12 @@ wss.on('connection', (ws) => {
 
             console.log(`🟢 Registered: ${deviceName} | Fingerprint: ${data.fingerprint}`);
 
-            // إرسال رسالة ترحيب للجهاز باسمه الجديد
             ws.send(JSON.stringify({
                 type: 'welcome',
                 assigned_name: deviceName
             }));
         }
         
-        // 2. حساب التأخير عند استلام الرد (Pong)
         else if (data.type === 'pong') {
             const t4 = Date.now(); 
             const t1 = data.t1;
@@ -66,25 +84,23 @@ wss.on('connection', (ws) => {
     });
 });
 
-// أداة مساعدة لتأخير التنفيذ
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// المايسترو: كل 60 ثانية، يقوم بالنداء على الأجهزة بالترتيب
 setInterval(async () => {
     if (connectedDevices.size === 0) return;
-
     console.log(`\n--- ⏳ Starting Sequential Sync for ${connectedDevices.size} devices ---`);
     
-    // المرور على الأجهزة واحداً تلو الآخر
     for (let [ws, device] of connectedDevices.entries()) {
         if (ws.readyState === WebSocket.OPEN) {
             const t1 = Date.now();
             ws.send(JSON.stringify({ type: 'ping', t1: t1 }));
-            
-            // ننتظر 100 ميلي ثانية قبل إرسال الإشارة للجهاز التالي
-            // هذا يضمن أن السيرفر يتفرغ تماماً لحساب الوقت لهذا الجهاز فقط بدون أي تشويش
             await delay(100); 
         }
     }
     console.log(`--- ✅ Sequential Sync Cycle Completed ---`);
 }, 60000);
+
+// 3. تشغيل الخادم المدمج
+server.listen(PORT, () => {
+    console.log(`🥷 NINJA MAESTRO Server is running on port ${PORT}`);
+});
