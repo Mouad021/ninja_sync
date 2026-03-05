@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NINJA MAESTRO | Server Clock</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        :root {
+            --neon-green: #00ff88;
+            --neon-green-dim: rgba(0, 255, 136, 0.2);
+            --dark-bg: #030305;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--dark-bg);
+            background-image: 
+                radial-gradient(circle at 50% 50%, #0a1f14 0%, var(--dark-bg) 70%),
+                linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+            background-size: 100% 100%, 30px 30px, 30px 30px;
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+        }
+
+        .dashboard-panel {
+            background: rgba(5, 10, 8, 0.6);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 20px;
+            padding: 50px 80px;
+            text-align: center;
+            backdrop-filter: blur(15px);
+            box-shadow: 
+                0 0 40px rgba(0, 255, 136, 0.1),
+                inset 0 0 20px rgba(0, 255, 136, 0.05);
+            position: relative;
+        }
+
+        /* Scanline Effect */
+        .dashboard-panel::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            border-radius: 20px;
+        }
+
+        .title {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            color: var(--neon-green);
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px var(--neon-green-dim);
+        }
+
+        .clock-container {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .time-main {
+            font-size: 110px;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 
+                0 0 20px var(--neon-green-dim),
+                0 0 40px rgba(0, 255, 136, 0.4);
+            letter-spacing: 2px;
+        }
+
+        .time-ms {
+            font-size: 40px;
+            font-weight: 700;
+            color: var(--neon-green);
+            margin-left: 10px;
+            text-shadow: 0 0 15px var(--neon-green);
+        }
+
+        .footer-stats {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: #888;
+            border-top: 1px dashed rgba(0, 255, 136, 0.3);
+            padding-top: 20px;
+        }
+
+        .stat-box { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .stat-value { color: var(--neon-green); font-weight: bold; font-size: 14px; }
+        
+        .status-dot {
+            width: 10px; height: 10px;
+            background-color: red;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 10px red;
+            transition: all 0.3s ease;
+        }
+        .status-dot.synced { background-color: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-panel">
+        <div class="title">NINJA MAESTRO SERVER CORE</div>
+        
+        <div class="clock-container">
+            <div id="time-main" class="time-main">00:00:00</div>
+            <div id="time-ms" class="time-ms">.000</div>
+        </div>
+
+        <div class="footer-stats">
+            <div class="stat-box">
+                <span>SYSTEM STATUS</span>
+                <div style="display: flex; align-items: center;">
+                    <div id="status-dot" class="status-dot"></div>
+                    <span id="status-text" class="stat-value" style="color: red;">CONNECTING...</span>
+                </div>
+            </div>
+            <div class="stat-box">
+                <span>SERVER OFFSET</span>
+                <span id="offset-val" class="stat-value">-- ms</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let offset = 0;
+        let isSynced = false;
+
+        // الاتصال الآلي بنفس رابط السيرفر (سواء كان localhost أو Railway)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            document.getElementById('status-text').innerText = 'AWAITING SYNC';
+            document.getElementById('status-text').style.color = '#facc15';
+            document.getElementById('status-dot').style.backgroundColor = '#facc15';
+            document.getElementById('status-dot').style.boxShadow = '0 0 10px #facc15';
+            
+            // تسجيل الواجهة كجهاز في السيرفر
+            ws.send(JSON.stringify({ type: 'register', fingerprint: 'NINJA-DASHBOARD' }));
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'ping') {
+                const t2 = Date.now();
+                const t3 = Date.now();
+                ws.send(JSON.stringify({ type: 'pong', t1: data.t1, t2: t2, t3: t3 }));
+            } 
+            else if (data.type === 'sync') {
+                // حساب الفارق بين ساعة المتصفح والسيرفر
+                offset = data.exact_time_ms - Date.now();
+                isSynced = true;
+                
+                document.getElementById('status-text').innerText = 'SYNCED & LOCKED';
+                document.getElementById('status-text').style.color = '#00ff88';
+                document.getElementById('status-dot').classList.add('synced');
+                document.getElementById('offset-val').innerText = (offset > 0 ? '+' : '') + offset.toFixed(1) + ' ms';
+            }
+        };
+
+        ws.onclose = () => {
+            document.getElementById('status-text').innerText = 'DISCONNECTED';
+            document.getElementById('status-text').style.color = 'red';
+            document.getElementById('status-dot').classList.remove('synced');
+            document.getElementById('status-dot').style.backgroundColor = 'red';
+            document.getElementById('status-dot').style.boxShadow = '0 0 10px red';
+            isSynced = false;
+        };
+
+        // تحديث الساعة بمعدل إطارات الشاشة (أعلى سرعة وسلاسة ممكنة)
+        function renderClock() {
+            const now = new Date(Date.now() + offset);
+            
+            const h = String(now.getUTCHours() + 1).padStart(2, '0'); // توقيت المغرب (UTC+1)
+            const m = String(now.getUTCMinutes()).padStart(2, '0');
+            const s = String(now.getUTCSeconds()).padStart(2, '0');
+            const ms = String(now.getUTCMilliseconds()).padStart(3, '0');
+
+            document.getElementById('time-main').innerText = `${h}:${m}:${s}`;
+            document.getElementById('time-ms').innerText = `.${ms}`;
+
+            requestAnimationFrame(renderClock);
+        }
+
+        // بدء الرسم
+        requestAnimationFrame(renderClock);
+    </script>
+</body>
+</html>
