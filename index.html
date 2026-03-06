@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NINJA MAESTRO | Advanced Command Center</title>
+    <title>NINJA MAESTRO | C2 Command Center</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
@@ -13,6 +13,7 @@
             --neon-blue: #00e5ff;
             --neon-blue-dim: rgba(0, 229, 255, 0.15);
             --neon-red: #ff0055;
+            --neon-yellow: #facc15;
             --dark-bg: #030406;
             --panel-bg: rgba(10, 15, 20, 0.65);
             --glass-border: rgba(255, 255, 255, 0.08);
@@ -99,6 +100,27 @@
             color: var(--neon-green);
             margin-left: 10px;
         }
+        
+        /* ------------------------------------------- */
+        /* أزرار القيادة والسيطرة (C2 Controls)       */
+        /* ------------------------------------------- */
+        .c2-divider {
+            border: 0; height: 1px; background: var(--glass-border);
+            margin: 25px 0;
+        }
+        .c2-controls {
+            display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;
+        }
+        .c2-btn {
+            font-family: 'Orbitron', sans-serif; font-size: 14px; font-weight: bold;
+            padding: 12px 25px; border-radius: 8px; cursor: pointer; transition: all 0.3s ease;
+            text-transform: uppercase; letter-spacing: 2px;
+            background: rgba(255,255,255,0.03); color: #a0b4c0; border: 1px solid var(--glass-border);
+            outline: none;
+        }
+        .c2-scramble:hover { background: rgba(0, 229, 255, 0.15); border-color: var(--neon-blue); color: var(--neon-blue); box-shadow: 0 0 20px var(--neon-blue-dim); }
+        .c2-launch:hover { background: rgba(255, 0, 85, 0.15); border-color: var(--neon-red); color: var(--neon-red); box-shadow: 0 0 20px rgba(255, 0, 85, 0.3); }
+        .c2-abort:hover { background: rgba(250, 204, 21, 0.15); border-color: var(--neon-yellow); color: var(--neon-yellow); box-shadow: 0 0 20px rgba(250, 204, 21, 0.2); }
 
         /* شبكة الرادار (المدن) */
         .radar-grid {
@@ -317,8 +339,15 @@
             <div id="time-ms" class="time-ms">.000</div>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 14px; color: #6c8a9c;">
-            <div>STATUS: <span id="status-text" style="color: #facc15;">CONNECTING...</span></div>
+            <div>STATUS: <span id="status-text" style="color: #facc15; font-weight: bold;">CONNECTING...</span></div>
             <div>OFFSET: <span id="offset-val" style="color: var(--neon-blue);">-- ms</span></div>
+        </div>
+
+        <hr class="c2-divider">
+        <div class="c2-controls">
+            <button class="c2-btn c2-scramble" onclick="sendCommand('scramble_targets')">🎲 SCRAMBLE TARGETS</button>
+            <button class="c2-btn c2-launch" onclick="sendCommand('start_all_hunters')">🚀 LAUNCH ALL</button>
+            <button class="c2-btn c2-abort" onclick="sendCommand('stop_all_hunters')">🛑 ABORT ALL</button>
         </div>
     </div>
 
@@ -387,7 +416,6 @@
             <div class="modal-city-name" id="modal-title">CITY NAME</div>
             <div style="width: 100px;"></div> 
         </div>
-
         <div class="modal-stats-grid">
             <div class="stat-card">
                 <h4>TOTAL SLOTS SECURED</h4>
@@ -402,7 +430,6 @@
                 <div class="val" id="modal-top-hunter" style="color: var(--neon-blue);">--</div>
             </div>
         </div>
-
         <div class="global-logs" style="max-width: 100%; border: none; padding: 0;">
             <div class="section-title">
                 <span id="modal-log-title">CITY LOGS</span>
@@ -422,21 +449,18 @@
     </div>
 
     <script>
-        // --- متغيرات النظام ---
         let offset = 0;
         let isSynced = false;
-        
-        // 🗄️ الذاكرة المؤقتة بالواجهة 
         let allLogs = []; 
         let currentOpenCity = null;
+        let wsStatusElement = document.getElementById('status-text');
 
-        // --- إعداد الاتصال بالسيرفر ---
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-            document.getElementById('status-text').innerText = 'AWAITING SYNC';
+            wsStatusElement.innerText = 'AWAITING SYNC';
             ws.send(JSON.stringify({ type: 'register', fingerprint: 'NINJA-DASHBOARD' }));
         };
 
@@ -453,19 +477,15 @@
             else if (data.type === 'sync') {
                 offset = data.exact_time_ms - Date.now();
                 isSynced = true;
-                const statusTxt = document.getElementById('status-text');
-                statusTxt.innerText = 'SYNCED & LOCKED';
-                statusTxt.style.color = 'var(--neon-green)';
+                if(wsStatusElement.innerText === 'AWAITING SYNC' || wsStatusElement.innerText === 'CONNECTING...') {
+                    wsStatusElement.innerText = 'SYNCED & LOCKED';
+                    wsStatusElement.style.color = 'var(--neon-green)';
+                }
                 document.getElementById('offset-val').innerText = (offset > 0 ? '+' : '') + offset.toFixed(1) + ' ms';
             }
-            // 📜 استقبال السجل القديم من السيرفر عند عمل Refresh أو الدخول لأول مرة
             else if (data.type === 'history_sync') {
                 allLogs = data.logs; 
-                
-                // تحديث الجدول العام بالسجلات القديمة
                 updateGlobalTable();
-                
-                // تحديث الواجهة الخارجية (المربعات) بآخر ضربة لكل مدينة
                 const cities = ['TANGIER', 'AGADIR', 'TETOUAN', 'RABAT', 'NADOR', 'CASABLANCA'];
                 cities.forEach(city => {
                     const lastCityLog = allLogs.find(log => log.city === city);
@@ -481,19 +501,48 @@
                     }
                 });
             }
-            // 🚀 استقبال بث الصيد المباشر وإضافته للذاكرة والجدول
             else if (data.type === 'success_broadcast') {
                 handleNewStrike(data);
+            }
+            // 🚀 استلام رد من السيرفر بنجاح توزيع الأهداف
+            else if (data.type === 'scramble_complete') {
+                flashStatus(`✅ ${data.count} TARGETS SCRAMBLED!`, 'var(--neon-blue)');
             }
         };
 
         ws.onclose = () => {
-            const statusTxt = document.getElementById('status-text');
-            statusTxt.innerText = 'DISCONNECTED';
-            statusTxt.style.color = 'var(--neon-red)';
+            wsStatusElement.innerText = 'DISCONNECTED';
+            wsStatusElement.style.color = 'var(--neon-red)';
         };
 
-        // --- معالجة الضربة الجديدة (السجل والواجهة) ---
+        // 🎯 دالة إرسال أوامر القيادة والسيطرة (C2)
+        function sendCommand(cmdType) {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: cmdType }));
+                
+                // تغيير النص مؤقتاً لتأكيد الإرسال
+                if (cmdType === 'start_all_hunters') flashStatus('🚀 LAUNCH COMMAND SENT!', 'var(--neon-red)');
+                if (cmdType === 'stop_all_hunters') flashStatus('🛑 ABORT COMMAND SENT!', 'var(--neon-yellow)');
+                if (cmdType === 'scramble_targets') flashStatus('🎲 SCRAMBLING...', 'var(--neon-blue)');
+            }
+        }
+
+        // دالة لعرض إشعار مؤقت في خانة الـ STATUS
+        function flashStatus(text, color) {
+            const oldText = isSynced ? 'SYNCED & LOCKED' : 'AWAITING SYNC';
+            const oldColor = isSynced ? 'var(--neon-green)' : 'var(--neon-yellow)';
+            
+            wsStatusElement.innerText = text;
+            wsStatusElement.style.color = color;
+            wsStatusElement.style.textShadow = `0 0 10px ${color}`;
+            
+            setTimeout(() => {
+                wsStatusElement.innerText = oldText;
+                wsStatusElement.style.color = oldColor;
+                wsStatusElement.style.textShadow = 'none';
+            }, 3000);
+        }
+
         function handleNewStrike(data) {
             const normalizedCity = data.city.trim().toUpperCase();
             
@@ -527,24 +576,22 @@
             }
         }
 
-        // --- تحديث الجدول العام ---
         function updateGlobalTable() {
             const tbody = document.getElementById('global-log-body');
             document.getElementById('total-hits-count').innerText = `TOTAL HITS: ${allLogs.length}`;
             
-            tbody.innerHTML = ''; // تفريغ الجدول لإعادة بنائه بناءً على الـ allLogs
+            tbody.innerHTML = ''; 
 
             if (allLogs.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #555;">Waiting for incoming data...</td></tr>`;
                 return;
             }
 
-            // عرض آخر 50 سجل لتجنب ثقل الصفحة
             const logsToShow = allLogs.slice(0, 50);
 
             logsToShow.forEach((log, index) => {
                 const tr = document.createElement('tr');
-                if(index === 0) tr.className = 'log-new-row'; // إضاءة لأحدث سجل فقط
+                if(index === 0) tr.className = 'log-new-row'; 
                 tr.innerHTML = `
                     <td style="color: #fff; font-weight: bold;">${log.city}</td>
                     <td style="color: var(--neon-green);">${log.time}</td>
@@ -555,7 +602,6 @@
             });
         }
 
-        // --- تأثيرات النافذة المنبثقة (The Expanding Box Magic) ---
         const modal = document.getElementById('city-modal');
 
         function openCityModal(event, cityName) {
@@ -584,7 +630,6 @@
             }
         });
 
-        // تحديث بيانات الداشبورد الداخلي للمدينة المحددة
         function updateModalData(cityName) {
             const cityLogs = allLogs.filter(log => log.city === cityName);
             const tbody = document.getElementById('modal-log-body');
@@ -611,7 +656,6 @@
             });
         }
 
-        // --- الساعة الملي ثانية ---
         function renderClock() {
             const now = new Date(Date.now() + offset);
             const h = String(now.getHours()).padStart(2, '0');
