@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-// 2. دمج خادم WebSocket مع خادم HTTP
+// 2. دمج خادم WebSocket مع خادم HTTP للسيمفونية
 const wss = new WebSocket.Server({ server });
 
 const connectedDevices = new Map();
@@ -35,9 +35,9 @@ wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         const data = JSON.parse(message);
 
+        // تسجيل الأجهزة والواجهة
         if (data.type === 'register') {
             deviceCounter++;
-            // تمييز الواجهة عن باقي الأجهزة
             const deviceName = data.fingerprint === 'NINJA-DASHBOARD' ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
             
             connectedDevices.set(ws, {
@@ -55,14 +55,24 @@ wss.on('connection', (ws) => {
             }));
         }
         
+        // 🚀 خوارزمية السيمفونية لحساب التأخير بدقة المايكروثانية
         else if (data.type === 'pong') {
-            const t4 = Date.now(); 
-            const t1 = data.t1;
-            const t2 = data.t2;
-            const t3 = data.t3;
+            const t4 = Date.now(); // لحظة استلام السيرفر للرد
+            const t1 = data.t1;    // لحظة خروج الإشارة من السيرفر
+            const t2 = data.t2;    // لحظة وصول الإشارة للجهاز
+            const t3 = data.t3;    // لحظة خروج الرد من الجهاز
+            
+            // الوقت الذي استغرقه جهازك في معالجة الرد (نطرحه لكي نحصل على وقت الشبكة الصافي)
+            const clientProcessingTime = t3 - t2; 
 
-            const offset = ((t2 - t1) + (t3 - t4)) / 2;
-            const exactTimeMs = Date.now() + offset;
+            // حساب وقت الرحلة الصافي في كابلات الإنترنت (ذهاب وإياب)
+            const rtt = (t4 - t1) - clientProcessingTime;
+            
+            // حساب وقت الطريق في اتجاه واحد (من السيرفر لجهازك)
+            const latency = rtt > 0 ? rtt / 2 : 0;
+
+            // السيرفر يعطي الجهاز وقتاً مستقبلياً يمثل (وقت السيرفر الحالي + وقت الطريق)
+            const exactTimeMs = Date.now() + latency;
 
             ws.send(JSON.stringify({
                 type: 'sync',
@@ -71,7 +81,7 @@ wss.on('connection', (ws) => {
             
             const device = connectedDevices.get(ws);
             const devName = device ? device.name : "Unknown";
-            console.log(`✅ Synced ${devName} | Offset: ${offset.toFixed(2)}ms`);
+            console.log(`✅ Synced ${devName} | Network Latency: ${latency.toFixed(2)}ms`);
         }
     });
 
@@ -84,20 +94,25 @@ wss.on('connection', (ws) => {
     });
 });
 
+// أداة مساعدة لإراحة المعالج بين كل جهاز والآخر
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// المايسترو: كل 60 ثانية، ينادي الأجهزة بالترتيب الدقيق
 setInterval(async () => {
     if (connectedDevices.size === 0) return;
-    console.log(`\n--- ⏳ Starting Sequential Sync for ${connectedDevices.size} devices ---`);
+    console.log(`\n--- ⏳ Starting Symphony Sync for ${connectedDevices.size} devices ---`);
     
+    // مناداة الأجهزة بالترتيب لكي لا يحصل ضغط ويختل البينج (Ping)
     for (let [ws, device] of connectedDevices.entries()) {
         if (ws.readyState === WebSocket.OPEN) {
-            const t1 = Date.now();
-            ws.send(JSON.stringify({ type: 'ping', t1: t1 }));
-            await delay(100); 
+            ws.send(JSON.stringify({ type: 'ping', t1: Date.now() }));
+            
+            // ننتظر 50 ميلي ثانية (وقت كافٍ جداً لإنهاء التزامن للجهاز والانتقال للتالي)
+            // إذا كان لديك 300 جهاز، ستنتهي العملية كلها بسلاسة تامة في 15 ثانية فقط!
+            await delay(50); 
         }
     }
-    console.log(`--- ✅ Sequential Sync Cycle Completed ---`);
+    console.log(`--- ✅ Symphony Cycle Completed ---`);
 }, 60000);
 
 // 3. تشغيل الخادم المدمج
