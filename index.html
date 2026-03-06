@@ -3,66 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NINJA MAESTRO | Server Clock</title>
+    <title>NINJA MAESTRO | Command Center</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
         :root {
             --neon-green: #00ff88;
-            --neon-green-dim: rgba(0, 255, 136, 0.2);
-            --dark-bg: #030305;
+            --neon-green-dim: rgba(0, 255, 136, 0.15);
+            --neon-blue: #00e5ff;
+            --neon-red: #ff0055;
+            --dark-bg: #050508;
+            --panel-bg: rgba(10, 15, 20, 0.75);
         }
 
         body {
             margin: 0;
             padding: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            min-height: 100vh;
             background-color: var(--dark-bg);
             background-image: 
-                radial-gradient(circle at 50% 50%, #0a1f14 0%, var(--dark-bg) 70%),
-                linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
-            background-size: 100% 100%, 30px 30px, 30px 30px;
+                radial-gradient(circle at 50% 50%, #0a1520 0%, var(--dark-bg) 80%),
+                linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
             color: white;
-            font-family: 'Orbitron', sans-serif;
-            overflow: hidden;
+            font-family: 'Share Tech Mono', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding-top: 30px;
+            overflow-x: hidden;
         }
 
-        .dashboard-panel {
-            background: rgba(5, 10, 8, 0.6);
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            border-radius: 20px;
-            padding: 50px 80px;
-            text-align: center;
-            backdrop-filter: blur(15px);
-            box-shadow: 
-                0 0 40px rgba(0, 255, 136, 0.1),
-                inset 0 0 20px rgba(0, 255, 136, 0.05);
-            position: relative;
-            transition: background-color 0.05s ease; /* إضافة انتقال سلس للوميض */
-        }
-
-        .dashboard-panel::after {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 50%);
-            background-size: 100% 4px;
+        /* مؤثر المسح الضوئي (Scanline) */
+        body::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 999;
+            background-size: 100% 2px, 3px 100%;
             pointer-events: none;
-            border-radius: 20px;
+        }
+
+        /* حاوية السيرفر الرئيسية */
+        .core-panel {
+            background: var(--panel-bg);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 15px;
+            padding: 40px 60px;
+            text-align: center;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 0 50px rgba(0, 229, 255, 0.05), inset 0 0 20px rgba(0, 229, 255, 0.1);
+            position: relative;
+            width: 800px;
+            max-width: 90%;
+            margin-bottom: 40px;
+            transition: all 0.05s ease;
         }
 
         .title {
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 8px;
-            color: var(--neon-green);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 12px;
+            color: var(--neon-blue);
             text-transform: uppercase;
-            margin-bottom: 20px;
-            text-shadow: 0 0 10px var(--neon-green-dim);
+            margin-bottom: 25px;
+            text-shadow: 0 0 15px var(--neon-blue);
         }
 
         .clock-container {
@@ -73,18 +86,16 @@
         }
 
         .time-main {
-            font-size: 110px;
-            font-weight: 900;
+            font-size: 100px;
+            font-weight: 700;
             color: #ffffff;
-            text-shadow: 
-                0 0 20px var(--neon-green-dim),
-                0 0 40px rgba(0, 255, 136, 0.4);
+            text-shadow: 0 0 20px var(--neon-green-dim), 0 0 40px rgba(0, 255, 136, 0.3);
             letter-spacing: 2px;
             transition: color 0.05s ease;
         }
 
         .time-ms {
-            font-size: 40px;
+            font-size: 35px;
             font-weight: 700;
             color: var(--neon-green);
             margin-left: 10px;
@@ -95,32 +106,128 @@
             margin-top: 30px;
             display: flex;
             justify-content: space-between;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-            color: #888;
-            border-top: 1px dashed rgba(0, 255, 136, 0.3);
+            font-size: 13px;
+            color: #6c8a9c;
+            border-top: 1px dashed rgba(0, 229, 255, 0.3);
             padding-top: 20px;
+            text-transform: uppercase;
         }
 
         .stat-box { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-        .stat-value { color: var(--neon-green); font-weight: bold; font-size: 14px; }
+        .stat-value { color: var(--neon-green); font-weight: bold; font-size: 16px; text-shadow: 0 0 10px var(--neon-green-dim); }
         
         .status-dot {
-            width: 10px; height: 10px;
-            background-color: red;
+            width: 12px; height: 12px;
+            background-color: var(--neon-red);
             border-radius: 50%;
             display: inline-block;
             margin-right: 8px;
-            box-shadow: 0 0 10px red;
+            box-shadow: 0 0 15px var(--neon-red);
             transition: all 0.3s ease;
         }
-        .status-dot.synced { background-color: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
+        .status-dot.synced { background-color: var(--neon-green); box-shadow: 0 0 15px var(--neon-green); }
+
+        /* شبكة الرادار (المدن) */
+        .radar-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            width: 900px;
+            max-width: 95%;
+            margin-bottom: 50px;
+        }
+
+        .city-card {
+            background: rgba(10, 15, 20, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .city-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .city-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: #a0b4c0;
+            letter-spacing: 2px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            z-index: 2;
+        }
+
+        .target-data {
+            text-align: center;
+            z-index: 2;
+        }
+
+        .target-status {
+            font-size: 12px;
+            color: #555;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .target-time {
+            font-size: 24px;
+            font-weight: bold;
+            color: transparent; /* مخفي في الحالة العادية */
+            margin-bottom: 5px;
+        }
+
+        .hunter-name {
+            font-size: 11px;
+            color: transparent;
+        }
+
+        /* 🚨 حالة الانفجار (عند صيد الموعد) */
+        .city-card.strike {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: var(--neon-green);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.2);
+            animation: pulse-alert 1s ease-out;
+        }
+
+        .city-card.strike::before { background: var(--neon-green); box-shadow: 0 0 15px var(--neon-green); }
+        .city-card.strike .city-name { color: #fff; text-shadow: 0 0 10px #fff; }
+        .city-card.strike .target-time { color: var(--neon-green); text-shadow: 0 0 10px var(--neon-green); }
+        .city-card.strike .hunter-name { color: #fff; }
+
+        @keyframes pulse-alert {
+            0% { transform: scale(1.05); background: rgba(0, 255, 136, 0.3); }
+            50% { background: rgba(0, 255, 136, 0.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* استجابة للشاشات الصغيرة */
+        @media (max-width: 900px) {
+            .radar-grid { grid-template-columns: repeat(2, 1fr); }
+            .time-main { font-size: 60px; }
+            .time-ms { font-size: 25px; }
+            .core-panel { padding: 30px; }
+        }
+        @media (max-width: 600px) {
+            .radar-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
 
-    <div class="dashboard-panel" id="main-panel">
-        <div class="title">NINJA MAESTRO SERVER CORE</div>
+    <div class="core-panel" id="main-panel">
+        <div class="title">NINJA MAESTRO SERVER</div>
         
         <div class="clock-container">
             <div id="time-main" class="time-main">00:00:00</div>
@@ -132,12 +239,63 @@
                 <span>SYSTEM STATUS</span>
                 <div style="display: flex; align-items: center;">
                     <div id="status-dot" class="status-dot"></div>
-                    <span id="status-text" class="stat-value" style="color: red;">CONNECTING...</span>
+                    <span id="status-text" class="stat-value" style="color: var(--neon-red); text-shadow: 0 0 10px var(--neon-red);">CONNECTING...</span>
                 </div>
             </div>
             <div class="stat-box">
-                <span>SERVER OFFSET</span>
-                <span id="offset-val" class="stat-value">-- ms</span>
+                <span>NETWORK OFFSET</span>
+                <span id="offset-val" class="stat-value" style="color: var(--neon-blue);">-- ms</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="radar-grid">
+        <div class="city-card" id="city-TANGIER">
+            <div class="city-name">Tangier</div>
+            <div class="target-data">
+                <div class="target-status" id="status-TANGIER">MONITORING...</div>
+                <div class="target-time" id="time-TANGIER">--:--:--.---</div>
+                <div class="hunter-name" id="hunter-TANGIER"></div>
+            </div>
+        </div>
+        <div class="city-card" id="city-AGADIR">
+            <div class="city-name">Agadir</div>
+            <div class="target-data">
+                <div class="target-status" id="status-AGADIR">MONITORING...</div>
+                <div class="target-time" id="time-AGADIR">--:--:--.---</div>
+                <div class="hunter-name" id="hunter-AGADIR"></div>
+            </div>
+        </div>
+        <div class="city-card" id="city-TETOUAN">
+            <div class="city-name">Tetouan</div>
+            <div class="target-data">
+                <div class="target-status" id="status-TETOUAN">MONITORING...</div>
+                <div class="target-time" id="time-TETOUAN">--:--:--.---</div>
+                <div class="hunter-name" id="hunter-TETOUAN"></div>
+            </div>
+        </div>
+        <div class="city-card" id="city-RABAT">
+            <div class="city-name">Rabat</div>
+            <div class="target-data">
+                <div class="target-status" id="status-RABAT">MONITORING...</div>
+                <div class="target-time" id="time-RABAT">--:--:--.---</div>
+                <div class="hunter-name" id="hunter-RABAT"></div>
+            </div>
+        </div>
+        <div class="city-card" id="city-NADOR">
+            <div class="city-name">Nador</div>
+            <div class="target-data">
+                <div class="target-status" id="status-NADOR">MONITORING...</div>
+                <div class="target-time" id="time-NADOR">--:--:--.---</div>
+                <div class="hunter-name" id="hunter-NADOR"></div>
+            </div>
+        </div>
+        <div class="city-card" id="city-CASABLANCA">
+            <div class="city-name">Casablanca</div>
+            <div class="target-data">
+                <div class="target-status" id="status-CASABLANCA">MONITORING...</div>
+                <div class="target-time" id="time-CASABLANCA">--:--:--.---</div>
+                <div class="hunter-name" id="hunter-CASABLANCA"></div>
             </div>
         </div>
     </div>
@@ -153,6 +311,7 @@
         ws.onopen = () => {
             document.getElementById('status-text').innerText = 'AWAITING SYNC';
             document.getElementById('status-text').style.color = '#facc15';
+            document.getElementById('status-text').style.textShadow = '0 0 10px #facc15';
             document.getElementById('status-dot').style.backgroundColor = '#facc15';
             document.getElementById('status-dot').style.boxShadow = '0 0 10px #facc15';
             
@@ -177,18 +336,41 @@
                 isSynced = true;
                 
                 document.getElementById('status-text').innerText = 'SYNCED & LOCKED';
-                document.getElementById('status-text').style.color = '#00ff88';
+                document.getElementById('status-text').style.color = 'var(--neon-green)';
+                document.getElementById('status-text').style.textShadow = '0 0 10px var(--neon-green-dim)';
                 document.getElementById('status-dot').classList.add('synced');
                 document.getElementById('offset-val').innerText = (offset > 0 ? '+' : '') + offset.toFixed(1) + ' ms';
+            }
+            // 🚀 استقبال بث الصيد الناجح من السيرفر
+            else if (data.type === 'success_broadcast') {
+                // تحويل اسم المدينة لحروف كبيرة ليتطابق مع الـ ID
+                const normalizedCity = data.city.trim().toUpperCase();
+                const cityCard = document.getElementById(`city-${normalizedCity}`);
+                
+                if (cityCard) {
+                    // تفعيل مؤثر الإضاءة
+                    cityCard.classList.add('strike');
+                    
+                    // تحديث البيانات
+                    document.getElementById(`status-${normalizedCity}`).innerHTML = `<span style="color:#fff;">🔥 SLOT SECURED!</span>`;
+                    document.getElementById(`time-${normalizedCity}`).innerText = data.time;
+                    document.getElementById(`hunter-${normalizedCity}`).innerText = `OP: ${data.hunter}`;
+                    
+                    // إزالة الانفجار بعد 8 ثواني ليكون جاهزاً للضربة القادمة، مع إبقاء المعلومات مكتوبة
+                    setTimeout(() => {
+                        cityCard.classList.remove('strike');
+                        document.getElementById(`status-${normalizedCity}`).innerHTML = `<span style="color:var(--neon-green);">DATA SAVED</span>`;
+                    }, 8000);
+                }
             }
         };
 
         ws.onclose = () => {
             document.getElementById('status-text').innerText = 'DISCONNECTED';
-            document.getElementById('status-text').style.color = 'red';
+            document.getElementById('status-text').style.color = 'var(--neon-red)';
             document.getElementById('status-dot').classList.remove('synced');
-            document.getElementById('status-dot').style.backgroundColor = 'red';
-            document.getElementById('status-dot').style.boxShadow = '0 0 10px red';
+            document.getElementById('status-dot').style.backgroundColor = 'var(--neon-red)';
+            document.getElementById('status-dot').style.boxShadow = '0 0 10px var(--neon-red)';
             isSynced = false;
         };
 
@@ -203,16 +385,15 @@
             document.getElementById('time-main').innerText = `${h}:${m}:${s}`;
             document.getElementById('time-ms').innerText = `.${ms}`;
 
-            // 🚀 اختبار السيمفونية: وميض أبيض ساطع في الصفر ميلي ثانية
+            // الوميض الدقيق (Flash Test) في الصفر ميلي ثانية
             const msNum = parseInt(ms, 10);
             const panel = document.getElementById('main-panel');
             
             if (msNum >= 0 && msNum <= 30) { 
-                // وميض مدته 30 ميلي ثانية فقط في بداية كل ثانية!
-                panel.style.backgroundColor = "rgba(255, 255, 255, 0.9)";
+                panel.style.backgroundColor = "rgba(255, 255, 255, 0.8)";
                 document.getElementById('time-main').style.color = "#000";
             } else {
-                panel.style.backgroundColor = "rgba(5, 10, 8, 0.6)";
+                panel.style.backgroundColor = "var(--panel-bg)";
                 document.getElementById('time-main').style.color = "#fff";
             }
 
