@@ -59,8 +59,8 @@ wss.on('connection', (ws) => {
                 console.log(`🟢 Registered: ${deviceName}`);
                 ws.send(JSON.stringify({ type: 'welcome', assigned_name: deviceName }));
 
-                // 🚀 [الترقية الجديدة: إرسال السجل القديم فوراً للداشبورد]
-                if (isDashboard && hunterLogs.length > 0) {
+                // 🚀 [الترقية الجديدة: إرسال السجل القديم فوراً لأي جهاز يتصل (داشبورد أو إضافة)]
+                if (hunterLogs.length > 0) {
                     ws.send(JSON.stringify({
                         type: 'history_sync',
                         logs: hunterLogs
