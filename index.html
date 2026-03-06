@@ -42,6 +42,7 @@
                 0 0 40px rgba(0, 255, 136, 0.1),
                 inset 0 0 20px rgba(0, 255, 136, 0.05);
             position: relative;
+            transition: background-color 0.05s ease; /* إضافة انتقال سلس للوميض */
         }
 
         .dashboard-panel::after {
@@ -79,6 +80,7 @@
                 0 0 20px var(--neon-green-dim),
                 0 0 40px rgba(0, 255, 136, 0.4);
             letter-spacing: 2px;
+            transition: color 0.05s ease;
         }
 
         .time-ms {
@@ -117,7 +119,7 @@
 </head>
 <body>
 
-    <div class="dashboard-panel">
+    <div class="dashboard-panel" id="main-panel">
         <div class="title">NINJA MAESTRO SERVER CORE</div>
         
         <div class="clock-container">
@@ -164,7 +166,6 @@
                 const t2 = Date.now();
                 const t3 = Date.now();
                 
-                // 🚀 التحديث الجديد ليتوافق مع السيرفر الخارق
                 const payload = { type: 'pong', t2: t2, t3: t3 };
                 if (data.t1_hr) payload.t1_hr = data.t1_hr;
                 if (data.t1) payload.t1 = data.t1;
@@ -194,7 +195,6 @@
         function renderClock() {
             const now = new Date(Date.now() + offset);
             
-            // يعرض التوقيت المحلي لجهازك
             const h = String(now.getHours()).padStart(2, '0');
             const m = String(now.getMinutes()).padStart(2, '0');
             const s = String(now.getSeconds()).padStart(2, '0');
@@ -202,6 +202,19 @@
 
             document.getElementById('time-main').innerText = `${h}:${m}:${s}`;
             document.getElementById('time-ms').innerText = `.${ms}`;
+
+            // 🚀 اختبار السيمفونية: وميض أبيض ساطع في الصفر ميلي ثانية
+            const msNum = parseInt(ms, 10);
+            const panel = document.getElementById('main-panel');
+            
+            if (msNum >= 0 && msNum <= 30) { 
+                // وميض مدته 30 ميلي ثانية فقط في بداية كل ثانية!
+                panel.style.backgroundColor = "rgba(255, 255, 255, 0.9)";
+                document.getElementById('time-main').style.color = "#000";
+            } else {
+                panel.style.backgroundColor = "rgba(5, 10, 8, 0.6)";
+                document.getElementById('time-main').style.color = "#fff";
+            }
 
             requestAnimationFrame(renderClock);
         }
