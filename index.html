@@ -44,7 +44,6 @@
             position: relative;
         }
 
-        /* Scanline Effect */
         .dashboard-panel::after {
             content: "";
             position: absolute;
@@ -145,7 +144,6 @@
         let offset = 0;
         let isSynced = false;
 
-        // الاتصال الآلي بنفس رابط السيرفر (سواء كان localhost أو Railway)
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
         const ws = new WebSocket(wsUrl);
@@ -156,7 +154,6 @@
             document.getElementById('status-dot').style.backgroundColor = '#facc15';
             document.getElementById('status-dot').style.boxShadow = '0 0 10px #facc15';
             
-            // تسجيل الواجهة كجهاز في السيرفر
             ws.send(JSON.stringify({ type: 'register', fingerprint: 'NINJA-DASHBOARD' }));
         };
 
@@ -166,10 +163,15 @@
             if (data.type === 'ping') {
                 const t2 = Date.now();
                 const t3 = Date.now();
-                ws.send(JSON.stringify({ type: 'pong', t1: data.t1, t2: t2, t3: t3 }));
+                
+                // 🚀 التحديث الجديد ليتوافق مع السيرفر الخارق
+                const payload = { type: 'pong', t2: t2, t3: t3 };
+                if (data.t1_hr) payload.t1_hr = data.t1_hr;
+                if (data.t1) payload.t1 = data.t1;
+                
+                ws.send(JSON.stringify(payload));
             } 
             else if (data.type === 'sync') {
-                // حساب الفارق بين ساعة المتصفح والسيرفر
                 offset = data.exact_time_ms - Date.now();
                 isSynced = true;
                 
@@ -189,14 +191,14 @@
             isSynced = false;
         };
 
-        // تحديث الساعة بمعدل إطارات الشاشة (أعلى سرعة وسلاسة ممكنة)
         function renderClock() {
             const now = new Date(Date.now() + offset);
             
-            const h = String(now.getUTCHours() + 1).padStart(2, '0'); // توقيت المغرب (UTC+1)
-            const m = String(now.getUTCMinutes()).padStart(2, '0');
-            const s = String(now.getUTCSeconds()).padStart(2, '0');
-            const ms = String(now.getUTCMilliseconds()).padStart(3, '0');
+            // يعرض التوقيت المحلي لجهازك
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            const ms = String(now.getMilliseconds()).padStart(3, '0');
 
             document.getElementById('time-main').innerText = `${h}:${m}:${s}`;
             document.getElementById('time-ms').innerText = `.${ms}`;
@@ -204,7 +206,6 @@
             requestAnimationFrame(renderClock);
         }
 
-        // بدء الرسم
         requestAnimationFrame(renderClock);
     </script>
 </body>
