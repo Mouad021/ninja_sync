@@ -239,7 +239,6 @@
             display: flex;
             flex-direction: column;
             padding: 40px 10vw;
-            /* السحر هنا: تأثير الدائرة التي تتسع */
             clip-path: circle(0px at var(--click-x, 50%) var(--click-y, 50%));
             transition: clip-path 0.7s cubic-bezier(0.76, 0, 0.24, 1), opacity 0.5s ease;
             opacity: 0;
@@ -386,7 +385,8 @@
         <div class="modal-header">
             <button class="btn-back" onclick="closeCityModal()">[ ESC ] BACK</button>
             <div class="modal-city-name" id="modal-title">CITY NAME</div>
-            <div style="width: 100px;"></div> </div>
+            <div style="width: 100px;"></div> 
+        </div>
 
         <div class="modal-stats-grid">
             <div class="stat-card">
@@ -416,7 +416,7 @@
                     </tr>
                 </thead>
                 <tbody id="modal-log-body">
-                    </tbody>
+                </tbody>
             </table>
         </div>
     </div>
@@ -426,7 +426,7 @@
         let offset = 0;
         let isSynced = false;
         
-        // 🗄️ الذاكرة المؤقتة بالواجهة (إلى أن نبرمج السيرفر ليرسل التاريخ القديم)
+        // 🗄️ الذاكرة المؤقتة بالواجهة 
         let allLogs = []; 
         let currentOpenCity = null;
 
@@ -458,7 +458,30 @@
                 statusTxt.style.color = 'var(--neon-green)';
                 document.getElementById('offset-val').innerText = (offset > 0 ? '+' : '') + offset.toFixed(1) + ' ms';
             }
-            // 🚀 استقبال بث الصيد وإضافته للذاكرة والجدول
+            // 📜 استقبال السجل القديم من السيرفر عند عمل Refresh أو الدخول لأول مرة
+            else if (data.type === 'history_sync') {
+                allLogs = data.logs; 
+                
+                // تحديث الجدول العام بالسجلات القديمة
+                updateGlobalTable();
+                
+                // تحديث الواجهة الخارجية (المربعات) بآخر ضربة لكل مدينة
+                const cities = ['TANGIER', 'AGADIR', 'TETOUAN', 'RABAT', 'NADOR', 'CASABLANCA'];
+                cities.forEach(city => {
+                    const lastCityLog = allLogs.find(log => log.city === city);
+                    if (lastCityLog) {
+                        const cityCard = document.getElementById(`city-${city}`);
+                        if (cityCard) {
+                            document.getElementById(`status-${city}`).innerHTML = `<span style="color:var(--neon-green);">DATA SAVED</span>`;
+                            document.getElementById(`time-${city}`).innerText = lastCityLog.time;
+                            document.getElementById(`time-${city}`).style.color = "var(--neon-green)";
+                            document.getElementById(`hunter-${city}`).innerText = `OP: ${lastCityLog.hunter}`;
+                            document.getElementById(`hunter-${city}`).style.color = "#fff";
+                        }
+                    }
+                });
+            }
+            // 🚀 استقبال بث الصيد المباشر وإضافته للذاكرة والجدول
             else if (data.type === 'success_broadcast') {
                 handleNewStrike(data);
             }
@@ -474,16 +497,14 @@
         function handleNewStrike(data) {
             const normalizedCity = data.city.trim().toUpperCase();
             
-            // 1. تسجيل الضربة في الذاكرة
             const newLog = {
                 city: normalizedCity,
                 time: data.time,
                 hunter: data.hunter,
                 timestamp: Date.now()
             };
-            allLogs.unshift(newLog); // إضافتها في أول القائمة
+            allLogs.unshift(newLog); 
             
-            // 2. تحديث المربع الخارجي
             const cityCard = document.getElementById(`city-${normalizedCity}`);
             if (cityCard) {
                 cityCard.classList.add('strike');
@@ -499,10 +520,8 @@
                 }, 8000);
             }
 
-            // 3. تحديث الجدول العام
             updateGlobalTable();
 
-            // 4. إذا كانت نافذة المدينة مفتوحة حالياً، قم بتحديثها مباشرة!
             if (currentOpenCity === normalizedCity) {
                 updateModalData(normalizedCity);
             }
@@ -513,31 +532,33 @@
             const tbody = document.getElementById('global-log-body');
             document.getElementById('total-hits-count').innerText = `TOTAL HITS: ${allLogs.length}`;
             
-            if (allLogs.length === 1) tbody.innerHTML = ''; // مسح رسالة الانتظار
-            
-            // جلب أحدث ضربة وإضافتها كأول صف مع تأثير إضاءة
-            const latest = allLogs[0];
-            const tr = document.createElement('tr');
-            tr.className = 'log-new-row';
-            tr.innerHTML = `
-                <td style="color: #fff; font-weight: bold;">${latest.city}</td>
-                <td style="color: var(--neon-green);">${latest.time}</td>
-                <td>${latest.hunter}</td>
-                <td><span style="background: rgba(0,255,136,0.2); padding: 3px 8px; border-radius: 4px; color: var(--neon-green); font-size: 11px;">SUCCESS</span></td>
-            `;
-            tbody.insertBefore(tr, tbody.firstChild);
+            tbody.innerHTML = ''; // تفريغ الجدول لإعادة بنائه بناءً على الـ allLogs
 
-            // الحفاظ على آخر 50 سجل فقط لمنع ثقل الصفحة
-            if (tbody.children.length > 50) {
-                tbody.removeChild(tbody.lastChild);
+            if (allLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #555;">Waiting for incoming data...</td></tr>`;
+                return;
             }
+
+            // عرض آخر 50 سجل لتجنب ثقل الصفحة
+            const logsToShow = allLogs.slice(0, 50);
+
+            logsToShow.forEach((log, index) => {
+                const tr = document.createElement('tr');
+                if(index === 0) tr.className = 'log-new-row'; // إضاءة لأحدث سجل فقط
+                tr.innerHTML = `
+                    <td style="color: #fff; font-weight: bold;">${log.city}</td>
+                    <td style="color: var(--neon-green);">${log.time}</td>
+                    <td>${log.hunter}</td>
+                    <td><span style="background: rgba(0,255,136,0.2); padding: 3px 8px; border-radius: 4px; color: var(--neon-green); font-size: 11px;">SUCCESS</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
 
         // --- تأثيرات النافذة المنبثقة (The Expanding Box Magic) ---
         const modal = document.getElementById('city-modal');
 
         function openCityModal(event, cityName) {
-            // أخذ إحداثيات الضغطة لفتح الدائرة منها
             const clickX = event.clientX + 'px';
             const clickY = event.clientY + 'px';
             
@@ -548,10 +569,7 @@
             document.getElementById('modal-title').innerText = cityName + " COMMAND";
             document.getElementById('modal-log-title').innerText = `${cityName} LIVE LOGS`;
             
-            // تحديث بيانات المدينة بالنافذة
             updateModalData(cityName);
-
-            // إظهار النافذة
             modal.classList.add('active');
         }
 
@@ -560,7 +578,6 @@
             currentOpenCity = null;
         }
 
-        // إغلاق بـ زر ESC
         document.addEventListener('keydown', (e) => {
             if (e.key === "Escape" && modal.classList.contains('active')) {
                 closeCityModal();
@@ -572,12 +589,10 @@
             const cityLogs = allLogs.filter(log => log.city === cityName);
             const tbody = document.getElementById('modal-log-body');
             
-            // إحصائيات علوية
             document.getElementById('modal-total-slots').innerText = cityLogs.length;
             document.getElementById('modal-last-time').innerText = cityLogs.length > 0 ? cityLogs[0].time : "--:--:--";
             document.getElementById('modal-top-hunter').innerText = cityLogs.length > 0 ? cityLogs[0].hunter : "NONE";
 
-            // جدول السجلات الخاص بالمدينة
             tbody.innerHTML = '';
             if (cityLogs.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="3" style="text-align: center;">No data captured yet for ${cityName}...</td></tr>`;
@@ -586,7 +601,7 @@
 
             cityLogs.forEach((log, index) => {
                 const tr = document.createElement('tr');
-                if(index === 0) tr.className = 'log-new-row'; // إضاءة للجديد
+                if(index === 0) tr.className = 'log-new-row'; 
                 tr.innerHTML = `
                     <td style="color: var(--neon-green); font-weight: bold;">${log.time}</td>
                     <td>${log.hunter}</td>
@@ -610,7 +625,6 @@
             const msNum = parseInt(ms, 10);
             const panel = document.getElementById('main-panel');
             
-            // وميض النانو ثانية
             if (msNum >= 0 && msNum <= 20) { 
                 panel.style.boxShadow = "0 20px 50px rgba(0,0,0,0.5), inset 0 0 50px rgba(255, 255, 255, 0.2)";
             } else {
