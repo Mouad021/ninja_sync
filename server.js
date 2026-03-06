@@ -54,15 +54,38 @@ wss.on('connection', (ws) => {
                 console.log(`🟢 Registered: ${deviceName}`);
                 ws.send(JSON.stringify({ type: 'welcome', assigned_name: deviceName }));
 
-                // 🚀 المزامنة الفورية بمجرد الدخول (بدون انتظار الدقيقة الأولى)
+                // المزامنة الفورية بمجرد الدخول
                 setTimeout(() => {
                     if (ws.readyState === WebSocket.OPEN) {
                         const t1_hr = process.hrtime.bigint().toString();
                         ws.send(JSON.stringify({ type: 'ping', t1_hr: t1_hr }));
                     }
-                }, 500); // إعطاء نصف ثانية للواجهة لترتيب أمورها قبل إرسال التزامن
+                }, 500);
             }
             
+            // 🚀 [استقبال طلبات الصيد الناجحة وبثها للجميع]
+            else if (data.type === 'success_booking') {
+                const device = connectedDevices.get(ws);
+                const hunterName = device ? device.name : "Unknown Ninja";
+                
+                console.log(`🔥 [BULLSEYE] ${hunterName} Caught a slot! City: ${data.city} | Time: ${data.time}`);
+                
+                // تجهيز رسالة البث لكل الأجهزة (خصوصاً واجهة الداسبورد لتعرضها في المربعات)
+                const broadcastMsg = JSON.stringify({
+                    type: 'success_broadcast',
+                    city: data.city,
+                    time: data.time,
+                    hunter: hunterName
+                });
+
+                // بث الرسالة لجميع المتصلين (Live Update)
+                for (let [client, info] of connectedDevices.entries()) {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(broadcastMsg);
+                    }
+                }
+            }
+
             // 🚀 [خوارزمية السيمفونية المطلقة بالنانوثانية]
             else if (data.type === 'pong') {
                 const t4_hr = process.hrtime.bigint(); 
@@ -73,14 +96,12 @@ wss.on('connection', (ws) => {
 
                 let clientProcessingTime = data.t3 - data.t2; 
 
-                // دروع الحماية لتصحيح الأخطاء الواردة من الأجهزة
                 if (clientProcessingTime < 0) clientProcessingTime = 0;
                 if (clientProcessingTime > rtt_ms) clientProcessingTime = rtt_ms;
 
                 const netLatency = rtt_ms - clientProcessingTime;
                 const oneWayLatency = netLatency > 0 ? netLatency / 2 : 0;
 
-                // رفض الأجهزة ذات الإنترنت الكارثي
                 if (oneWayLatency > 3000) {
                     console.log(`⚠️ Ignored ${connectedDevices.get(ws)?.name} due to extreme lag (${oneWayLatency.toFixed(0)}ms)`);
                     return;
@@ -94,10 +115,6 @@ wss.on('connection', (ws) => {
                         exact_time_ms: exactTimeMs
                     }));
                 }
-                
-                const device = connectedDevices.get(ws);
-                const devName = device ? device.name : "Unknown";
-                console.log(`✅ Synced ${devName} | Latency: ${oneWayLatency.toFixed(2)}ms | Proc: ${clientProcessingTime.toFixed(2)}ms`);
             }
         } catch (e) {
             console.error(`[Data Error] Received malformed message:`, e.message);
@@ -118,7 +135,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // 🛡️ المايسترو الخارق: الصيانة الدورية كل 60 ثانية للحفاظ على الدقة
 setInterval(async () => {
     if (connectedDevices.size === 0) return;
-    console.log(`\n--- ⏳ Starting Symphony Sync for ${connectedDevices.size} devices ---`);
     
     for (let [ws, device] of connectedDevices.entries()) {
         if (ws.readyState !== WebSocket.OPEN) {
@@ -135,10 +151,9 @@ setInterval(async () => {
         
         await delay(50); 
     }
-    console.log(`--- ✅ Symphony Cycle Completed ---`);
 }, 60000);
 
-// 🛡️ حماية السيرفر من أي خطأ مفاجئ خارج الـ WebSocket
+// 🛡️ حماية السيرفر من أي خطأ مفاجئ
 process.on('uncaughtException', (error) => {
     console.error('🔥 [CRITICAL] Uncaught Exception preventing crash:', error);
 });
@@ -148,5 +163,5 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // تشغيل الخادم
 server.listen(PORT, () => {
-    console.log(`🥷 NINJA MAESTRO SERVER IS LIVE ON PORT ${PORT} [Bulletproof Edition]`);
+    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [Broadcaster Edition]`);
 });
