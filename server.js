@@ -32,6 +32,21 @@ const wss = new WebSocket.Server({ server });
 const connectedDevices = new Map();
 let deviceCounter = 0; 
 
+// 🎯 [دالة المزامنة الجبارة] تطلق رشقات من النبضات المتتالية
+function startSyncSession(ws, device) {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    
+    // تصفير العداد للبدء بجلسة فلترة إحصائية جديدة (5 نبضات)
+    device.syncState = {
+        active: true,
+        results: [],
+        maxPings: 5 
+    };
+    
+    const t1_hr = process.hrtime.bigint().toString();
+    ws.send(JSON.stringify({ type: 'ping', t1_hr: t1_hr }));
+}
+
 wss.on('connection', (ws) => {
     ws.isAlive = true; 
 
@@ -50,16 +65,19 @@ wss.on('connection', (ws) => {
                 const isDashboard = data.fingerprint === 'NINJA-DASHBOARD';
                 const deviceName = isDashboard ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
                 
-                connectedDevices.set(ws, {
+                const device = {
                     id: deviceCounter,
                     name: deviceName,
-                    fingerprint: data.fingerprint
-                });
+                    fingerprint: data.fingerprint,
+                    syncState: null
+                };
+
+                connectedDevices.set(ws, device);
 
                 console.log(`🟢 Registered: ${deviceName}`);
                 ws.send(JSON.stringify({ type: 'welcome', assigned_name: deviceName }));
 
-                // 🚀 [الترقية الجديدة: إرسال السجل القديم فوراً لأي جهاز يتصل (داشبورد أو إضافة)]
+                // 🚀 إرسال السجل القديم فوراً لأي جهاز يتصل
                 if (hunterLogs.length > 0) {
                     ws.send(JSON.stringify({
                         type: 'history_sync',
@@ -68,12 +86,9 @@ wss.on('connection', (ws) => {
                     console.log(`📜 Sent history (${hunterLogs.length} logs) to ${deviceName}`);
                 }
 
-                // المزامنة الفورية بمجرد الدخول
+                // بدء جلسة المزامنة الخماسية (Multi-Ping) بمجرد الدخول
                 setTimeout(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        const t1_hr = process.hrtime.bigint().toString();
-                        ws.send(JSON.stringify({ type: 'ping', t1_hr: t1_hr }));
-                    }
+                    startSyncSession(ws, device);
                 }, 500);
             }
             
@@ -113,8 +128,11 @@ wss.on('connection', (ws) => {
                 }
             }
 
-            // ⏱️ [خوارزمية السيمفونية المطلقة بالنانوثانية]
+            // ⏱️ [الترقية الجديدة: خوارزمية الفلترة الإحصائية المطلقة]
             else if (data.type === 'pong') {
+                const device = connectedDevices.get(ws);
+                if (!device || !device.syncState || !device.syncState.active) return;
+
                 const t4_hr = process.hrtime.bigint(); 
                 const t1_hr = BigInt(data.t1_hr); 
 
@@ -122,25 +140,46 @@ wss.on('connection', (ws) => {
                 const rtt_ms = Number(rtt_ns) / 1_000_000;
 
                 let clientProcessingTime = data.t3 - data.t2; 
-
                 if (clientProcessingTime < 0) clientProcessingTime = 0;
                 if (clientProcessingTime > rtt_ms) clientProcessingTime = rtt_ms;
 
                 const netLatency = rtt_ms - clientProcessingTime;
                 const oneWayLatency = netLatency > 0 ? netLatency / 2 : 0;
 
-                if (oneWayLatency > 3000) {
-                    console.log(`⚠️ Ignored ${connectedDevices.get(ws)?.name} due to extreme lag (${oneWayLatency.toFixed(0)}ms)`);
-                    return;
-                }
+                // تسجيل نتيجة هذه النبضة
+                device.syncState.results.push(oneWayLatency);
 
-                const exactTimeMs = Date.now() + oneWayLatency;
+                // إذا لم نصل إلى العدد المطلوب، أطلق النبضة التالية بسرعة البرق
+                if (device.syncState.results.length < device.syncState.maxPings) {
+                    const next_t1_hr = process.hrtime.bigint().toString();
+                    ws.send(JSON.stringify({ type: 'ping', t1_hr: next_t1_hr }));
+                } 
+                // إذا اكتملت الخمس نبضات، قم بتحليلها لاختيار المسار الأنقى
+                else {
+                    const validResults = device.syncState.results.filter(l => l <= 3000); 
+                    
+                    if (validResults.length === 0) {
+                        console.log(`⚠️ Ignored ${device.name} due to extreme lag in all pings.`);
+                        device.syncState.active = false;
+                        return;
+                    }
 
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: 'sync',
-                        exact_time_ms: exactTimeMs
-                    }));
+                    // ⚡ السحر هنا: أخذ أقل تأخير (Best One-Way Latency) وتجاهل التشويش
+                    const bestOneWayLatency = Math.min(...validResults);
+                    const exactTimeMs = Date.now() + bestOneWayLatency;
+
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'sync',
+                            exact_time_ms: exactTimeMs
+                        }));
+                        
+                        // طباعة النتيجة للأجهزة العادية وليس للداشبورد لمنع الإزعاج
+                        if (!device.name.includes('Dashboard')) {
+                            console.log(`⏱️ [SYMPHONY TUNED] ${device.name} synchronized precisely! Best Latency: ${bestOneWayLatency.toFixed(2)}ms`);
+                        }
+                    }
+                    device.syncState.active = false; // إنهاء الجلسة
                 }
             }
         } catch (e) {
@@ -159,7 +198,7 @@ wss.on('connection', (ws) => {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 🛡️ المايسترو الخارق: الصيانة الدورية كل 60 ثانية للحفاظ على الدقة
+// 🛡️ المايسترو الخارق: الصيانة الدورية كل 60 ثانية
 setInterval(async () => {
     if (connectedDevices.size === 0) return;
     
@@ -169,13 +208,11 @@ setInterval(async () => {
             continue;
         }
 
-        const t1_hr = process.hrtime.bigint().toString();
+        // إطلاق جلسة المزامنة
+        startSyncSession(ws, device);
         
-        ws.send(JSON.stringify({ 
-            type: 'ping', 
-            t1_hr: t1_hr 
-        }));
-        
+        // 🛡️ تأخير 50 ملي ثانية بين كل جهاز وآخر 
+        // لحماية معالج السيرفر من الانفجار عند استلام 1500 نبضة من 300 جهاز في نفس اللحظة
         await delay(50); 
     }
 }, 60000);
@@ -190,5 +227,5 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // تشغيل الخادم
 server.listen(PORT, () => {
-    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [Memory Vault Edition]`);
+    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [Christian's Algorithm Edition]`);
 });
