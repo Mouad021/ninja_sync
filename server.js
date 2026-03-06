@@ -65,17 +65,31 @@ wss.on('connection', (ws) => {
                 const isDashboard = data.fingerprint === 'NINJA-DASHBOARD';
                 const deviceName = isDashboard ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
                 
+                // 🎲 توليد هدف عشوائي مبدئي للجهاز عند دخوله
+                const initialTotalMs = Math.floor(Math.random() * 60000);
+
                 const device = {
                     id: deviceCounter,
                     name: deviceName,
                     fingerprint: data.fingerprint,
-                    syncState: null
+                    syncState: null,
+                    target: { // حفظ الهدف في ذاكرة السيرفر
+                        sec: Math.floor(initialTotalMs / 1000),
+                        ms: initialTotalMs % 1000
+                    }
                 };
 
                 connectedDevices.set(ws, device);
 
                 console.log(`🟢 Registered: ${deviceName}`);
-                ws.send(JSON.stringify({ type: 'welcome', assigned_name: deviceName }));
+                
+                // إرسال الترحيب مع الهدف المبدئي (للأجهزة العادية)
+                ws.send(JSON.stringify({ 
+                    type: 'welcome', 
+                    assigned_name: deviceName,
+                    target_sec: device.target.sec,
+                    target_ms: device.target.ms
+                }));
 
                 // 🚀 إرسال السجل القديم فوراً لأي جهاز يتصل
                 if (hunterLogs.length > 0) {
@@ -83,13 +97,84 @@ wss.on('connection', (ws) => {
                         type: 'history_sync',
                         logs: hunterLogs
                     }));
-                    console.log(`📜 Sent history (${hunterLogs.length} logs) to ${deviceName}`);
+                    if (isDashboard) console.log(`📜 Sent history (${hunterLogs.length} logs) to ${deviceName}`);
                 }
 
                 // بدء جلسة المزامنة الخماسية (Multi-Ping) بمجرد الدخول
                 setTimeout(() => {
                     startSyncSession(ws, device);
                 }, 500);
+            }
+
+            // 🎲 [أمر بعثرة وتوزيع الأهداف من الداشبورد - The Masterstroke]
+            else if (data.type === 'scramble_targets') {
+                const sender = connectedDevices.get(ws);
+                if (sender && sender.name.includes('Dashboard')) {
+                    console.log('🎲 [COMMAND] Dashboard triggered Target Scramble!');
+                    
+                    let clients = [];
+                    // استخراج الأجهزة (الصيادين فقط، بدون الداشبورد)
+                    for (let [client, info] of connectedDevices.entries()) {
+                        if (!info.name.includes('Dashboard')) {
+                            clients.push({client, info});
+                        }
+                    }
+                    
+                    let count = clients.length;
+                    if (count > 0) {
+                        // 1. تقسيم 60 ثانية (60000 ملي ثانية) على عدد الأجهزة بالتساوي
+                        let stepMs = Math.floor(60000 / count);
+                        let times = [];
+                        
+                        for(let i = 0; i < count; i++) {
+                            // إضافة تشويش عشوائي (Jitter) لكي لا تكون دقيقة بشكل مريب
+                            let jitter = Math.floor(Math.random() * (stepMs * 0.8)); 
+                            let totalMs = (i * stepMs) + jitter;
+                            if (totalMs >= 60000) totalMs = 59999;
+                            times.push(totalMs);
+                        }
+                        
+                        // 2. خلط الأوقات خلطاً كاملاً (Fisher-Yates Shuffle)
+                        for (let i = times.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [times[i], times[j]] = [times[j], times[i]];
+                        }
+                        
+                        // 3. توزيع الأوقات المخلطة على الأجهزة وإرسالها
+                        for(let i = 0; i < count; i++) {
+                            let sec = Math.floor(times[i] / 1000);
+                            let ms = times[i] % 1000;
+                            
+                            clients[i].info.target = { sec, ms };
+                            
+                            if (clients[i].client.readyState === WebSocket.OPEN) {
+                                clients[i].client.send(JSON.stringify({
+                                    type: 'new_target',
+                                    sec: sec,
+                                    ms: ms
+                                }));
+                            }
+                        }
+                        console.log(`✅ Distributed ${count} completely random & uniformly spread targets!`);
+                        ws.send(JSON.stringify({ type: 'scramble_complete', count: count }));
+                    }
+                }
+            }
+
+            // 🚀 [أمر إطلاق الهجوم أو إيقافه للجميع]
+            else if (data.type === 'start_all_hunters' || data.type === 'stop_all_hunters') {
+                const sender = connectedDevices.get(ws);
+                if (sender && sender.name.includes('Dashboard')) {
+                    const actionName = data.type === 'start_all_hunters' ? 'START' : 'STOP';
+                    console.log(`🚀 [COMMAND] Dashboard ordered: ${actionName} ALL HUNTERS!`);
+                    
+                    const cmd = JSON.stringify({ type: data.type });
+                    for (let [client, info] of connectedDevices.entries()) {
+                        if (!info.name.includes('Dashboard') && client.readyState === WebSocket.OPEN) {
+                            client.send(cmd);
+                        }
+                    }
+                }
             }
             
             // 🔥 [استقبال طلبات الصيد الناجحة وتخزينها وبثها]
@@ -227,5 +312,5 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // تشغيل الخادم
 server.listen(PORT, () => {
-    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [Christian's Algorithm Edition]`);
+    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [C2 Command Edition]`);
 });
