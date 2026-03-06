@@ -5,13 +5,13 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 
-// 1. إنشاء خادم HTTP لتقديم واجهة المستخدم (Dashboard)
+// 1. خادم HTTP (مقاوم للأخطاء)
 const server = http.createServer((req, res) => {
     if (req.url === '/') {
         fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
             if (err) {
                 res.writeHead(500);
-                res.end('Error loading dashboard');
+                res.end('Dashboard not found');
             } else {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
                 res.end(data);
@@ -23,65 +23,87 @@ const server = http.createServer((req, res) => {
     }
 });
 
-// 2. دمج خادم WebSocket مع خادم HTTP للسيمفونية
+// 2. خادم السيمفونية (مقاوم للسقوط والتخريب)
 const wss = new WebSocket.Server({ server });
-
 const connectedDevices = new Map();
 let deviceCounter = 0; 
 
 wss.on('connection', (ws) => {
-    console.log('🟡 New connection attempt...');
+    ws.isAlive = true; // علامة لمعرفة ما إذا كان الجهاز متصلاً فعلاً
+
+    // معالجة أخطاء الاتصال الفردية لمنع السيرفر من السقوط
+    ws.on('error', (err) => {
+        console.error(`[WS Error] Device dropped connection silently.`);
+    });
 
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
+        try {
+            const data = JSON.parse(message);
 
-        // تسجيل الأجهزة والواجهة
-        if (data.type === 'register') {
-            deviceCounter++;
-            const deviceName = data.fingerprint === 'NINJA-DASHBOARD' ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
+            // [تسجيل الأجهزة]
+            if (data.type === 'register') {
+                deviceCounter++;
+                const deviceName = data.fingerprint === 'NINJA-DASHBOARD' ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
+                
+                connectedDevices.set(ws, {
+                    id: deviceCounter,
+                    name: deviceName,
+                    fingerprint: data.fingerprint
+                });
+
+                console.log(`🟢 Registered: ${deviceName}`);
+                ws.send(JSON.stringify({ type: 'welcome', assigned_name: deviceName }));
+            }
             
-            connectedDevices.set(ws, {
-                id: deviceCounter,
-                name: deviceName,
-                fingerprint: data.fingerprint,
-                connectedAt: new Date().toISOString()
-            });
+            // 🚀 [خوارزمية السيمفونية المطلقة بالنانوثانية]
+            else if (data.type === 'pong') {
+                // استخدام ساعة المعالج فائقة الدقة بالنانوثانية لمعرفة متى وصل الرد
+                const t4_hr = process.hrtime.bigint(); 
+                const t1_hr = BigInt(data.t1_hr); // وقت خروج الإشارة من السيرفر بالنانوثانية
 
-            console.log(`🟢 Registered: ${deviceName} | Fingerprint: ${data.fingerprint}`);
+                // حساب وقت الرحلة الكلي بالنانوثانية ثم تحويله للميلي ثانية (بأجزاء عشرية)
+                const rtt_ns = t4_hr - t1_hr;
+                const rtt_ms = Number(rtt_ns) / 1_000_000;
 
-            ws.send(JSON.stringify({
-                type: 'welcome',
-                assigned_name: deviceName
-            }));
-        }
-        
-        // 🚀 خوارزمية السيمفونية لحساب التأخير بدقة المايكروثانية
-        else if (data.type === 'pong') {
-            const t4 = Date.now(); // لحظة استلام السيرفر للرد
-            const t1 = data.t1;    // لحظة خروج الإشارة من السيرفر
-            const t2 = data.t2;    // لحظة وصول الإشارة للجهاز
-            const t3 = data.t3;    // لحظة خروج الرد من الجهاز
-            
-            // الوقت الذي استغرقه جهازك في معالجة الرد (نطرحه لكي نحصل على وقت الشبكة الصافي)
-            const clientProcessingTime = t3 - t2; 
+                // وقت معالجة الجهاز (من استلامه حتى إرساله)
+                let clientProcessingTime = data.t3 - data.t2; 
 
-            // حساب وقت الرحلة الصافي في كابلات الإنترنت (ذهاب وإياب)
-            const rtt = (t4 - t1) - clientProcessingTime;
-            
-            // حساب وقت الطريق في اتجاه واحد (من السيرفر لجهازك)
-            const latency = rtt > 0 ? rtt / 2 : 0;
+                // 🛡️ درع الحماية 1: منع الأرقام السالبة لو اختلت ساعة الجهاز العميل
+                if (clientProcessingTime < 0) clientProcessingTime = 0;
+                
+                // 🛡️ درع الحماية 2: مستحيل أن يكون وقت المعالجة أكبر من وقت الرحلة كاملاً!
+                if (clientProcessingTime > rtt_ms) clientProcessingTime = rtt_ms;
 
-            // السيرفر يعطي الجهاز وقتاً مستقبلياً يمثل (وقت السيرفر الحالي + وقت الطريق)
-            const exactTimeMs = Date.now() + latency;
+                // حساب وقت الطريق الصافي
+                const netLatency = rtt_ms - clientProcessingTime;
+                
+                // الطريق في اتجاه واحد
+                const oneWayLatency = netLatency > 0 ? netLatency / 2 : 0;
 
-            ws.send(JSON.stringify({
-                type: 'sync',
-                exact_time_ms: exactTimeMs
-            }));
-            
-            const device = connectedDevices.get(ws);
-            const devName = device ? device.name : "Unknown";
-            console.log(`✅ Synced ${devName} | Network Latency: ${latency.toFixed(2)}ms`);
+                // 🛡️ درع الحماية 3: إذا كان البينج كارثياً (أكثر من 3 ثوانٍ)، نرفض المزامنة لأنه غير موثوق
+                if (oneWayLatency > 3000) {
+                    console.log(`⚠️ Ignored ${connectedDevices.get(ws)?.name} due to extreme lag (${oneWayLatency.toFixed(0)}ms)`);
+                    return;
+                }
+
+                // 🎯 الضربة القاضية: وقت السيرفر المرجعي + وقت الطريق الفعلي
+                const exactTimeMs = Date.now() + oneWayLatency;
+
+                // الإرسال للجهاز ليضبط ساعته
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'sync',
+                        exact_time_ms: exactTimeMs
+                    }));
+                }
+                
+                const device = connectedDevices.get(ws);
+                const devName = device ? device.name : "Unknown";
+                console.log(`✅ Synced ${devName} | Latency: ${oneWayLatency.toFixed(2)}ms | Proc: ${clientProcessingTime.toFixed(2)}ms`);
+            }
+        } catch (e) {
+            // 🛡️ درع الحماية 4: منع السيرفر من السقوط لو استقبل بيانات تالفة
+            console.error(`[Data Error] Received malformed message:`, e.message);
         }
     });
 
@@ -94,28 +116,44 @@ wss.on('connection', (ws) => {
     });
 });
 
-// أداة مساعدة لإراحة المعالج بين كل جهاز والآخر
+// أداة مساعدة لإراحة المعالج
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// المايسترو: كل 60 ثانية، ينادي الأجهزة بالترتيب الدقيق
+// 🛡️ المايسترو الخارق: كل 60 ثانية ينظم الأجهزة
 setInterval(async () => {
     if (connectedDevices.size === 0) return;
     console.log(`\n--- ⏳ Starting Symphony Sync for ${connectedDevices.size} devices ---`);
     
-    // مناداة الأجهزة بالترتيب لكي لا يحصل ضغط ويختل البينج (Ping)
     for (let [ws, device] of connectedDevices.entries()) {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping', t1: Date.now() }));
-            
-            // ننتظر 50 ميلي ثانية (وقت كافٍ جداً لإنهاء التزامن للجهاز والانتقال للتالي)
-            // إذا كان لديك 300 جهاز، ستنتهي العملية كلها بسلاسة تامة في 15 ثانية فقط!
-            await delay(50); 
+        // تنظيف الأجهزة الميتة التي فقدت الاتصال (Dead Sockets)
+        if (ws.readyState !== WebSocket.OPEN) {
+            connectedDevices.delete(ws);
+            continue;
         }
+
+        // استخدام ساعة النانوثانية الثابتة جداً
+        const t1_hr = process.hrtime.bigint().toString();
+        
+        ws.send(JSON.stringify({ 
+            type: 'ping', 
+            t1_hr: t1_hr 
+        }));
+        
+        // إراحة السيرفر 50 ميلي ثانية (لضمان أن السيرفر متفرغ 100% للجهاز التالي)
+        await delay(50); 
     }
     console.log(`--- ✅ Symphony Cycle Completed ---`);
 }, 60000);
 
-// 3. تشغيل الخادم المدمج
+// 🛡️ درع الحماية 5: حماية السيرفر بالكامل من أي خطأ مفاجئ خارج الـ WebSocket
+process.on('uncaughtException', (error) => {
+    console.error('🔥 [CRITICAL] Uncaught Exception preventing crash:', error);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 [CRITICAL] Unhandled Rejection preventing crash:', reason);
+});
+
+// تشغيل الخادم
 server.listen(PORT, () => {
-    console.log(`🥷 NINJA MAESTRO Server is running on port ${PORT}`);
+    console.log(`🥷 NINJA MAESTRO SERVER IS LIVE ON PORT ${PORT} [Bulletproof Edition]`);
 });
