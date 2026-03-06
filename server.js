@@ -5,6 +5,10 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 
+// 🗄️ [ذاكرة السيرفر الفولاذية] - تحتفظ بآخر 100 عملية صيد
+const MAX_LOGS = 100;
+const hunterLogs = [];
+
 // 1. خادم HTTP (مقاوم للأخطاء لتقديم الواجهة)
 const server = http.createServer((req, res) => {
     if (req.url === '/') {
@@ -40,10 +44,11 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
 
-            // [تسجيل الأجهزة والمزامنة الفورية]
+            // 🟢 [تسجيل الأجهزة والمزامنة الفورية]
             if (data.type === 'register') {
                 deviceCounter++;
-                const deviceName = data.fingerprint === 'NINJA-DASHBOARD' ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
+                const isDashboard = data.fingerprint === 'NINJA-DASHBOARD';
+                const deviceName = isDashboard ? 'Web-Dashboard' : `Ninja-${deviceCounter}`;
                 
                 connectedDevices.set(ws, {
                     id: deviceCounter,
@@ -54,6 +59,15 @@ wss.on('connection', (ws) => {
                 console.log(`🟢 Registered: ${deviceName}`);
                 ws.send(JSON.stringify({ type: 'welcome', assigned_name: deviceName }));
 
+                // 🚀 [الترقية الجديدة: إرسال السجل القديم فوراً للداشبورد]
+                if (isDashboard && hunterLogs.length > 0) {
+                    ws.send(JSON.stringify({
+                        type: 'history_sync',
+                        logs: hunterLogs
+                    }));
+                    console.log(`📜 Sent history (${hunterLogs.length} logs) to ${deviceName}`);
+                }
+
                 // المزامنة الفورية بمجرد الدخول
                 setTimeout(() => {
                     if (ws.readyState === WebSocket.OPEN) {
@@ -63,14 +77,27 @@ wss.on('connection', (ws) => {
                 }, 500);
             }
             
-            // 🚀 [استقبال طلبات الصيد الناجحة وبثها للجميع]
+            // 🔥 [استقبال طلبات الصيد الناجحة وتخزينها وبثها]
             else if (data.type === 'success_booking') {
                 const device = connectedDevices.get(ws);
                 const hunterName = device ? device.name : "Unknown Ninja";
                 
                 console.log(`🔥 [BULLSEYE] ${hunterName} Caught a slot! City: ${data.city} | Time: ${data.time}`);
                 
-                // تجهيز رسالة البث لكل الأجهزة (خصوصاً واجهة الداسبورد لتعرضها في المربعات)
+                // 1. تسجيل الضربة في ذاكرة السيرفر
+                const newLog = {
+                    city: data.city.trim().toUpperCase(),
+                    time: data.time,
+                    hunter: hunterName,
+                    timestamp: Date.now()
+                };
+                
+                hunterLogs.unshift(newLog); // إضافة في البداية
+                if (hunterLogs.length > MAX_LOGS) {
+                    hunterLogs.pop(); // حذف الأقدم إذا تجاوزنا 100
+                }
+
+                // 2. تجهيز رسالة البث
                 const broadcastMsg = JSON.stringify({
                     type: 'success_broadcast',
                     city: data.city,
@@ -78,7 +105,7 @@ wss.on('connection', (ws) => {
                     hunter: hunterName
                 });
 
-                // بث الرسالة لجميع المتصلين (Live Update)
+                // 3. بث الرسالة لجميع المتصلين (Live Update)
                 for (let [client, info] of connectedDevices.entries()) {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(broadcastMsg);
@@ -86,7 +113,7 @@ wss.on('connection', (ws) => {
                 }
             }
 
-            // 🚀 [خوارزمية السيمفونية المطلقة بالنانوثانية]
+            // ⏱️ [خوارزمية السيمفونية المطلقة بالنانوثانية]
             else if (data.type === 'pong') {
                 const t4_hr = process.hrtime.bigint(); 
                 const t1_hr = BigInt(data.t1_hr); 
@@ -163,5 +190,5 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // تشغيل الخادم
 server.listen(PORT, () => {
-    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [Broadcaster Edition]`);
+    console.log(`🥷 NINJA COMMAND CENTER IS LIVE ON PORT ${PORT} [Memory Vault Edition]`);
 });
