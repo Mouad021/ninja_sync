@@ -351,8 +351,9 @@
         let currentOpenCity = null;
         let wsStatusElement = document.getElementById('status-text');
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}`;
+        const SERVER_WS_URL = "wss://ninjasync-production-2f88.up.railway.app";
+        const MASTER_SECRET = "M&H2019";
+        const wsUrl = `${SERVER_WS_URL}/?token=${MASTER_SECRET}`;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
