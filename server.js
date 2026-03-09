@@ -2,7 +2,6 @@ const http = require('http');
 const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const MASTER_SECRET = process.env.MASTER_SECRET || 'M&H2019'; 
@@ -49,14 +48,13 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 wss.on('connection', (ws, request) => {
-    const isDashboard = request.headers['x-role'] === 'maestro';
     
-    // إعداد الهيكل المبدئي للجهاز
+    // إعداد الهيكل المبدئي للجهاز (بدون صلاحيات حتى يثبت هويته)
     const device = {
-        id: isDashboard ? 'Web-Dashboard' : 'Pending-Ninja',
-        name: isDashboard ? 'Web-Dashboard' : 'Pending-Ninja',
-        isDashboard: isDashboard,
-        isReady: false, // 📍 هذا المتغير يحدد ما إذا كان التامبرمونكي في الصفحة الصحيحة
+        id: 'Pending-Ninja',
+        name: 'Pending-Ninja',
+        isDashboard: false,
+        isReady: false, // يحدد ما إذا كان في صفحة الحجز
         msgCount: 0 
     };
 
@@ -64,7 +62,7 @@ wss.on('connection', (ws, request) => {
 
     ws.on('message', (message) => {
         device.msgCount++;
-        if (device.msgCount > 50) { 
+        if (device.msgCount > 60) { 
             console.warn(`⚠️ [RATE LIMIT] Kicking ${device.name} for spamming!`);
             ws.terminate();
             return;
@@ -73,34 +71,44 @@ wss.on('connection', (ws, request) => {
         try {
             const data = JSON.parse(message);
 
-            // 🟢 [1. التسجيل وكشف الاستنساخ (Clone Detection)]
+            // 🟢 [1. التسجيل والتعرف على الهوية]
             if (data.type === 'register') {
                 const incomingId = data.client_id;
                 
-                // البحث إذا كان هذا الـ ID متصل مسبقاً (جهاز مستنسخ)
+                // البحث عن مستنسخين (Clones) وطردهم (باستثناء الداشبورد)
                 for (let [existingWs, existingDevice] of connectedDevices.entries()) {
                     if (existingDevice.id === incomingId && existingWs.readyState === WebSocket.OPEN && existingWs !== ws) {
-                        console.log(`⚠️ [CLONE DETECTED] Forcing ${incomingId} to reset identity!`);
-                        ws.send(JSON.stringify({ type: 'RESET_IDENTITY' }));
-                        return; 
+                        if (incomingId !== 'NINJA-DASHBOARD') {
+                            console.log(`⚠️ [CLONE DETECTED] Forcing ${incomingId} to reset identity!`);
+                            ws.send(JSON.stringify({ type: 'RESET_IDENTITY' }));
+                            return; 
+                        }
                     }
                 }
 
-                // تسجيل الجهاز بشكل رسمي
                 device.id = incomingId;
                 device.name = incomingId;
-                console.log(`🟢 [REGISTERED] Hunter joined: ${incomingId}`);
+                
+                // 👑 منح صلاحيات المايسترو للداشبورد
+                if (incomingId === 'NINJA-DASHBOARD') {
+                    device.isDashboard = true;
+                    console.log(`👑 [MAESTRO] Dashboard Commander Online!`);
+                    
+                    // إرسال السجل القديم للداشبورد ليتم عرضه
+                    ws.send(JSON.stringify({ type: 'history_sync', logs: hunterLogs }));
+                } else {
+                    console.log(`🟢 [REGISTERED] Hunter joined: ${incomingId}`);
+                }
+
                 ws.send(JSON.stringify({ type: 'welcome', assigned_name: incomingId }));
             }
 
-            // 📍 [2. الرادار: استقبال حالة التامبرمونكي (هل هو في الصفحة؟)]
+            // 📍 [2. الرادار: حالة التامبرمونكي]
             else if (data.type === 'status_update') {
                 device.isReady = data.on_target_page === true;
-                // يمكن تفعيل هذا السطر لاحقاً لتتبع من دخل الصفحة ومن خرج
-                // console.log(`📍 [RADAR] ${device.name} Ready Status: ${device.isReady}`);
             }
 
-            // ⏱️ [3. المزامنة المطلقة (تحديث لتطابق بايثون)]
+            // ⏱️ [3. المزامنة المطلقة]
             else if (data.type === 'time_sync') {
                 ws.send(JSON.stringify({
                     type: 'time_sync_reply',
@@ -109,16 +117,17 @@ wss.on('connection', (ws, request) => {
                 }));
             }
 
-            // 🎯 [4. أوامر الداشبورد: مدفعية التوزيع العشوائي (Scramble)]
-            else if (isDashboard) {
+            // 🎯 [4. أوامر القيادة والسيطرة (خاص بالداشبورد فقط!)]
+            else if (device.isDashboard) {
+                
+                // أمر مدفعية التوزيع العشوائي (SCRAMBLE)
                 if (data.type === 'SCRAMBLE_ATTACK') {
-                    // الداشبورد يرسل الوقت الدقيق لبداية ونهاية المدى بالملي ثانية
                     const startTimeMs = data.startTimeMs; 
                     const endTimeMs = data.endTimeMs;
 
-                    // تصفية الأجهزة: استخراج الصيادين الجاهزين (في الصفحة الصحيحة) فقط
                     let eligibleHunters = [];
                     for (let [clientWs, info] of connectedDevices.entries()) {
+                        // نستهدف فقط الأجهزة العادية الجاهزة في الصفحة
                         if (!info.isDashboard && info.isReady && clientWs.readyState === WebSocket.OPEN) {
                             eligibleHunters.push(clientWs);
                         }
@@ -126,45 +135,66 @@ wss.on('connection', (ws, request) => {
 
                     const count = eligibleHunters.length;
                     if (count === 0) {
-                        console.log("⚠️ [SCRAMBLE] Aborted! No hunters are currently on the target page.");
-                        // إرسال تنبيه للداشبورد
-                        ws.send(JSON.stringify({ type: 'alert', msg: 'No hunters ready on the target page!' }));
+                        console.log("⚠️ [SCRAMBLE] Aborted! No hunters are ready.");
+                        ws.send(JSON.stringify({ type: 'alert', msg: 'NO HUNTERS ON TARGET PAGE!' }));
                         return;
                     }
 
                     console.log(`🎲 [SCRAMBLE] Distributing targets across ${count} ready hunters...`);
-
-                    // حساب الأوقات لتغطية المساحة بالكامل
                     const spanMs = endTimeMs - startTimeMs;
                     let targetTimes = [];
 
                     if (count === 1) {
-                        // إذا كان هناك جهاز واحد، نعطيه المنتصف
                         targetTimes.push(startTimeMs + Math.floor(spanMs / 2));
                     } else {
-                        // تقسيم المسافة بالتساوي (مثلاً بين 8.000 و 12.000)
                         const stepMs = spanMs / (count - 1); 
                         for (let i = 0; i < count; i++) {
                             targetTimes.push(Math.floor(startTimeMs + (i * stepMs)));
                         }
                     }
 
-                    // خلط الأوقات (Shuffle) حتى لا يأخذ الجهاز رقم 1 دائماً الثواني الأولى
+                    // خلط الأوقات (Shuffle)
                     for (let i = targetTimes.length - 1; i > 0; i--) {
                         const j = Math.floor(Math.random() * (i + 1));
                         [targetTimes[i], targetTimes[j]] = [targetTimes[j], targetTimes[i]];
                     }
 
-                    // إرسال وقت محدد لكل جهاز
                     eligibleHunters.forEach((clientWs, index) => {
-                        const preciseTime = targetTimes[index];
                         clientWs.send(JSON.stringify({
                             type: 'EXECUTE_ATTACK_AT',
-                            target_time: preciseTime
+                            target_time: targetTimes[index]
                         }));
                     });
 
-                    console.log(`✅ [SCRAMBLE COMPLETE] Grid completely covered!`);
+                    ws.send(JSON.stringify({ type: 'scramble_complete', count: count }));
+                }
+                
+                // أمر الإطلاق الفوري (LAUNCH ALL)
+                else if (data.type === 'start_all_hunters') {
+                    console.log(`🚀 [MAESTRO] Ordered IMMEDIATE LAUNCH!`);
+                    let count = 0;
+                    const payload = JSON.stringify({ type: 'EXECUTE_NOW' });
+                    
+                    for (let [clientWs, info] of connectedDevices.entries()) {
+                        if (!info.isDashboard && info.isReady && clientWs.readyState === WebSocket.OPEN) {
+                            clientWs.send(payload);
+                            count++;
+                        }
+                    }
+                    ws.send(JSON.stringify({ type: 'alert', msg: `LAUNCHED ${count} HUNTERS!` }));
+                }
+
+                // أمر الإجهاض وإيقاف الهجوم (ABORT ALL)
+                else if (data.type === 'stop_all_hunters') {
+                    console.log(`🛑 [MAESTRO] Ordered ABORT ALL!`);
+                    const payload = JSON.stringify({ type: 'ABORT_ATTACK' });
+                    
+                    for (let [clientWs, info] of connectedDevices.entries()) {
+                        if (!info.isDashboard && clientWs.readyState === WebSocket.OPEN) {
+                            clientWs.send(payload);
+                        }
+                    }
+                    ws.send(JSON.stringify({ type: 'alert', msg: 'ALL ATTACKS ABORTED!' }));
                 }
             }
 
@@ -187,6 +217,7 @@ wss.on('connection', (ws, request) => {
                     ...newLog
                 });
 
+                // بث النتيجة للجميع (وأهمهم الداشبورد ليعرضها)
                 for (let [clientWs, info] of connectedDevices.entries()) {
                     if (clientWs.readyState === WebSocket.OPEN) {
                         clientWs.send(broadcastMsg);
@@ -201,12 +232,15 @@ wss.on('connection', (ws, request) => {
 
     ws.on('close', () => {
         connectedDevices.delete(ws);
-        if (!isDashboard) {
+        if (device.isDashboard) {
+            console.log(`🔴 [MAESTRO] Dashboard Disconnected.`);
+        } else {
             console.log(`🔴 Disconnected: ${device.name}`);
         }
     });
 });
 
+// تصفير عداد الحماية من الإغراق كل ثانية
 setInterval(() => {
     for (let device of connectedDevices.values()) {
         device.msgCount = 0;
