@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NINJA OLYMPUS | C2 Terminal</title>
+    <title>NINJA CONTROLE CENTER</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
@@ -351,65 +351,80 @@
         let currentOpenCity = null;
         let wsStatusElement = document.getElementById('status-text');
 
+        // ⚠️ إجبار الداشبورد على الاتصال بالسيرفر مع تقديم كلمة السر
         const SERVER_WS_URL = "wss://ninjasync-production-2f88.up.railway.app";
         const MASTER_SECRET = "M&H2019";
-        const wsUrl = `${SERVER_WS_URL}/?token=${MASTER_SECRET}`;
-        const ws = new WebSocket(wsUrl);
+        let ws;
 
-        ws.onopen = () => {
+        function connectMaestro() {
             wsStatusElement.innerText = 'AUTHENTICATING...';
-            ws.send(JSON.stringify({ type: 'register', client_id: 'NINJA-DASHBOARD' }));
-        };
+            wsStatusElement.style.color = 'var(--yellow)';
+            
+            ws = new WebSocket(`${SERVER_WS_URL}/?token=${MASTER_SECRET}`);
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'register', client_id: 'NINJA-DASHBOARD' }));
+            };
 
-            if (data.type === 'welcome') {
-                // نبدأ المزامنة بمجرد التسجيل
-                ws.send(JSON.stringify({ type: 'time_sync', client_time: Date.now() }));
-            }
-            else if (data.type === 'time_sync_reply') {
-                // حساب الفارق الزمني البسيط للداشبورد (لا يحتاج دقة النانو ثانية كالبايثون)
-                const t3 = Date.now();
-                const rtt = t3 - data.client_time;
-                offset = data.server_time - (data.client_time + (rtt / 2));
-                
-                isSynced = true;
-                wsStatusElement.innerText = 'SECURE UPLINK ESTABLISHED';
-                wsStatusElement.style.color = 'var(--green)';
-                wsStatusElement.style.textShadow = '0 0 10px var(--green-glow)';
-                document.getElementById('offset-val').innerText = (offset > 0 ? '+' : '') + Math.round(offset) + ' ms';
-            }
-            else if (data.type === 'history_sync') {
-                allLogs = data.logs; 
-                updateGlobalTable();
-                // تحديث واجهات المدن بالبيانات القديمة
-                const cities = ['TANGIER', 'AGADIR', 'TETOUAN', 'RABAT', 'NADOR', 'CASABLANCA'];
-                cities.forEach(city => {
-                    const lastCityLog = allLogs.find(log => log.city === city);
-                    if (lastCityLog) {
-                        const cityCard = document.getElementById(`city-${city}`);
-                        document.getElementById(`status-${city}`).innerHTML = `<span style="color:var(--green);">DATA ARCHIVED</span>`;
-                        document.getElementById(`time-${city}`).innerText = lastCityLog.time;
-                        document.getElementById(`time-${city}`).style.color = "var(--green)";
-                        document.getElementById(`hunter-${city}`).innerText = `OP: ${lastCityLog.hunter}`;
-                        document.getElementById(`hunter-${city}`).style.color = "#fff";
-                    }
-                });
-            }
-            else if (data.type === 'success_broadcast') {
-                handleNewStrike(data);
-            }
-            else if (data.type === 'alert') {
-                flashStatus(`⚠️ ${data.msg}`, 'var(--yellow)');
-            }
-        };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
 
-        ws.onclose = () => {
-            wsStatusElement.innerText = 'UPLINK SEVERED';
-            wsStatusElement.style.color = 'var(--red)';
-            wsStatusElement.style.textShadow = '0 0 10px var(--red-glow)';
-        };
+                if (data.type === 'welcome') {
+                    ws.send(JSON.stringify({ type: 'time_sync', client_time: Date.now() }));
+                }
+                else if (data.type === 'time_sync_reply') {
+                    const t3 = Date.now();
+                    const rtt = t3 - data.client_time;
+                    offset = data.server_time - (data.client_time + (rtt / 2));
+                    
+                    isSynced = true;
+                    wsStatusElement.innerText = 'SECURE UPLINK ESTABLISHED';
+                    wsStatusElement.style.color = 'var(--green)';
+                    wsStatusElement.style.textShadow = '0 0 10px var(--green-glow)';
+                    document.getElementById('offset-val').innerText = (offset > 0 ? '+' : '') + Math.round(offset) + ' ms';
+                }
+                else if (data.type === 'history_sync') {
+                    allLogs = data.logs; 
+                    updateGlobalTable();
+                    // تحديث واجهات المدن بالبيانات القديمة
+                    const cities = ['TANGIER', 'AGADIR', 'TETOUAN', 'RABAT', 'NADOR', 'CASABLANCA'];
+                    cities.forEach(city => {
+                        const lastCityLog = allLogs.find(log => log.city === city);
+                        if (lastCityLog) {
+                            const cityCard = document.getElementById(`city-${city}`);
+                            if (cityCard) {
+                                document.getElementById(`status-${city}`).innerHTML = `<span style="color:var(--green);">DATA ARCHIVED</span>`;
+                                document.getElementById(`time-${city}`).innerText = lastCityLog.time;
+                                document.getElementById(`time-${city}`).style.color = "var(--green)";
+                                document.getElementById(`hunter-${city}`).innerText = `OP: ${lastCityLog.hunter}`;
+                                document.getElementById(`hunter-${city}`).style.color = "#fff";
+                            }
+                        }
+                    });
+                }
+                else if (data.type === 'success_broadcast') {
+                    handleNewStrike(data);
+                }
+                else if (data.type === 'alert') {
+                    flashStatus(`⚠️ ${data.msg}`, 'var(--yellow)');
+                }
+                else if (data.type === 'scramble_complete') {
+                    flashStatus(`✅ ${data.count} TARGETS SCRAMBLED!`, 'var(--cyan)');
+                }
+            };
+
+            ws.onclose = () => {
+                wsStatusElement.innerText = 'UPLINK SEVERED - RECONNECTING...';
+                wsStatusElement.style.color = 'var(--red)';
+                wsStatusElement.style.textShadow = '0 0 10px var(--red-glow)';
+                isSynced = false;
+                // إعادة الاتصال التلقائي كل ثانيتين
+                setTimeout(connectMaestro, 2000);
+            };
+        }
+
+        // بدء الاتصال عند تحميل الصفحة
+        connectMaestro();
 
         // 🎯 المدفعية: خوارزمية السكرامبل
         function executeScramble() {
@@ -421,7 +436,6 @@
                 return;
             }
 
-            // لضمان أن البداية دائماً أصغر من النهاية، وإلا يعني أنه يقصد الدقيقة القادمة
             let nextMinute = false;
             if (startSec > endSec) {
                 nextMinute = true;
@@ -431,8 +445,6 @@
             let targetStartDate = new Date(now.getTime());
             let targetEndDate = new Date(now.getTime());
 
-            // إذا كانت الثواني المطلوبة قد مرت بالفعل في هذه الدقيقة أو قريبة جداً (أقل من ثانيتين)، 
-            // ننقل الهدف للدقيقة القادمة تلقائياً لإعطاء وقت للتجهيز
             if (now.getSeconds() >= startSec - 2) {
                 targetStartDate.setMinutes(targetStartDate.getMinutes() + 1);
                 targetEndDate.setMinutes(targetEndDate.getMinutes() + 1);
@@ -448,19 +460,19 @@
             targetEndDate.setSeconds(endSec, 999);
             let endTimeMs = targetEndDate.getTime();
 
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: 'SCRAMBLE_ATTACK',
                     startTimeMs: startTimeMs,
                     endTimeMs: endTimeMs
                 }));
-                flashStatus(`🎲 SCRAMBLE INITIATED [${startSec}s - ${endSec}s]`, 'var(--cyan)');
+                flashStatus(`🎲 SCRAMBLE COMMAND SENT [${startSec}s - ${endSec}s]`, 'var(--cyan)');
             }
         }
 
-        // أوامر أخرى
+        // أوامر أخرى (LAUNCH ALL / ABORT ALL)
         function sendCommand(cmdType) {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: cmdType }));
                 if (cmdType === 'start_all_hunters') flashStatus('🚀 LAUNCH COMMAND SENT!', 'var(--red)');
                 if (cmdType === 'stop_all_hunters') flashStatus('🛑 ABORT COMMAND SENT!', 'var(--yellow)');
@@ -589,7 +601,6 @@
             document.getElementById('time-main').innerText = `${h}:${m}:${s}`;
             document.getElementById('time-ms').innerText = `.${ms}`;
 
-            // تأثير نبضة الإضاءة (EMP) في أول 20 ميلي ثانية من كل ثانية
             const msNum = parseInt(ms, 10);
             const panel = document.getElementById('main-panel');
             
